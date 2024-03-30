@@ -205,4 +205,6 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
+module.exports = app;
+
 //app.listen(8080, () => console.log('Server has started on port 8080'))
