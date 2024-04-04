@@ -1,9 +1,9 @@
-import express from "express";
-import * as dotenv from "dotenv";
-import cors from "cors";
-import jwt from "jsonwebtoken";
-import { PrismaClient, UserRole } from '@prisma/client'
-import fileUpload from 'express-fileupload';
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const { PrismaClient, UserRole } = require('@prisma/client');
+const fileUpload = require('express-fileupload');
 
 const db = globalThis.prisma || new PrismaClient();
 
@@ -136,7 +136,7 @@ app.get("/api/users", verifyToken, (req, res) => {
 })
 
 app.patch("/api/users/:userId", verifyToken, async (req, res) => {
-  const userId = req.params.userId; // Retrieve id from params
+  const userId = req.params.userId; // Retrieve id=require(params
   const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
   const { user } = decodedToken;
 
@@ -202,7 +202,7 @@ app.patch("/api/users/:userId", verifyToken, async (req, res) => {
 
 app.delete("/api/users/:userId", verifyToken, async (req, res) => {
   try {
-    const userId = req.params.userId; // Retrieve id from params
+    const userId = req.params.userId; // Retrieve id=require(params
     const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
     const { user } = decodedToken;
 
@@ -243,6 +243,7 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
-// module.exports = app;
+
+module.exports = app;
 
 //app.listen(8080, () => console.log('Server has started on port 8080'))

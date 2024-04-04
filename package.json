@@ -1,7 +1,6 @@
 {
   "name": "mobile-assigment",
-  "version": "0.1.4",
-  "type": "module",
+  "version": "0.1.5",
   "description": "",
   "main": "index.js",
   "scripts": {
