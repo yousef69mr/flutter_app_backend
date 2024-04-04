@@ -3,6 +3,7 @@ import * as dotenv from "dotenv";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import { PrismaClient, UserRole } from '@prisma/client'
+import fileUpload from 'express-fileupload';
 
 const db = globalThis.prisma || new PrismaClient();
 
@@ -16,6 +17,13 @@ dotenv.config();
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+// enable files upload
+app.use(fileUpload({
+  createParentPath: true
+}));
+
+app.use(express.static('uploads'));
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
@@ -145,21 +153,51 @@ app.patch("/api/users/:userId", verifyToken, async (req, res) => {
     role
   } = req.body;
 
-  const updatedUser = await db.user.update({
-    where: { id: userId },
-    data: {
-      name,
-      email,
-      password,
-      studentId,
-      level,
-      gender,
-      role
+  if (isNaN(level)) {
+    res.status(400).json({ message: "Level must be a number." });
+  }
+
+  let avatar;
+
+  try {
+
+
+    if (req.files?.avatar) {
+
+      if (Array.isArray(req.files?.avatar)) {
+        res.status(400).json({ message: "avatar must be a single image" });
+      }
+
+      const avatarFile = req.files?.avatar;
+
+      if (avatarFile.mimetype.split('/')[0] !== "image") {
+        res.status(406).json({ message: "avatar must be an image" });
+      }
+
+      //Use the mv() method to place the file in the upload directory (i.e. "uploads")
+      avatarFile.mv(`./uploads/users/${userId}/` + avatarFile.name);
+      avatar = `/users/${userId}/${avatarFile.name}`.replaceAll(` `, "%20");
+      console.log(avatar);
     }
-  })
 
-  res.status(200).json(updatedUser); // Return userId and user data
+    const updatedUser = await db.user.update({
+      where: { id: userId },
+      data: {
+        name,
+        email,
+        password,
+        studentId,
+        level: parseInt(level),
+        gender,
+        avatar
+      }
+    })
 
+    res.status(200).json(updatedUser); // Return userId and user data
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "internal error" });
+  }
 })
 
 app.delete("/api/users/:userId", verifyToken, async (req, res) => {
@@ -205,6 +243,6 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
-module.exports = app;
+// module.exports = app;
 
 //app.listen(8080, () => console.log('Server has started on port 8080'))
