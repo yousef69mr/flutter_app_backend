@@ -4,6 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import { PrismaClient, UserRole } from '@prisma/client'
 import fileUpload from 'express-fileupload';
+import * as fs from 'fs';
 
 const db = globalThis.prisma || new PrismaClient();
 
@@ -83,6 +84,7 @@ app.post("/api/register", async (req, res) => {
 
   if (existingUser) {
     res.status(403).json({ message: "Email or Student ID already in use." });
+    return;
   }
 
   const user = await db.user.create({ data: { name, level, studentId, email, password, gender } });
@@ -161,6 +163,15 @@ app.patch("/api/users/:userId", verifyToken, async (req, res) => {
 
   try {
 
+    const existingUser = await db.user.findUnique({
+      where: {
+        id: userId
+      }
+    })
+
+    if (!existingUser) {
+      res.status(404).json({ message: "user not found" });
+    }
 
     if (req.files?.avatar) {
 
@@ -173,11 +184,17 @@ app.patch("/api/users/:userId", verifyToken, async (req, res) => {
       if (avatarFile.mimetype.split('/')[0] !== "image") {
         res.status(406).json({ message: "avatar must be an image" });
       }
-
+      try {
+        if (existingUser.avatar) {
+          fs.unlinkSync('./uploads' + existingUser.avatar);
+        }
+      } catch (error) {
+        console.error(error);
+      }
       //Use the mv() method to place the file in the upload directory (i.e. "uploads")
       avatarFile.mv(`./uploads/users/${userId}/` + avatarFile.name);
       avatar = `/users/${userId}/${avatarFile.name}`.replaceAll(` `, "%20");
-      console.log(avatar);
+      // console.log(avatar);
     }
 
     const updatedUser = await db.user.update({
