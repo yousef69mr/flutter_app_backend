@@ -110,14 +110,25 @@ app.get("/api/active_user", verifyToken, (req, res) => {
         const activeUser = await db.user.findUnique({
           where: {
             id: user.id
+          },
+          include: {
+            favoriteStores: {
+              include: {
+                store: true
+              }
+            }
           }
         })
 
         if (!activeUser) {
           return res.status(404).json({ message: "User not found" })
         }
+
+        const userFavoriteStores = activeUser.favoriteStores.map(store => ({ ...store.store, id: store.id }));
+
+        const formattedUser = { ...activeUser, favoriteStores: userFavoriteStores }
         // console.log(authData)
-        res.status(200).json(activeUser);
+        res.status(200).json(formattedUser);
       } catch (e) {
         res.status(500).json({ message: "internal error" })
       }
@@ -131,7 +142,11 @@ app.get("/api/users", verifyToken, (req, res) => {
     if (err) {
       res.status(403).json({ message: 'Invalid token' });
     } else {
-      const users = await db.user.findMany();
+      const users = await db.user.findMany({
+        include: {
+          favoriteStores: true
+        }
+      });
       res.status(200).json(users);
     }
   })
@@ -207,6 +222,8 @@ app.patch("/api/users/:userId", verifyToken, async (req, res) => {
         level: parseInt(level),
         gender,
         avatar
+      }, include: {
+        favoriteStores: true
       }
     })
 
@@ -246,13 +263,249 @@ function verifyToken(req, res, next) {
 
     const bearerToken = bearer[1];
 
-    req.token = bearerToken;
-
-    next();
+    jwt.verify(bearerToken, process.env.JWT_SECRET, (err, _) => {
+      if (err) {
+        if (err.name === 'JsonWebTokenError') {
+          // Handle expired token error
+          return res.status(401).json({ message: "Token expired" });
+        } else {
+          // Handle other JWT errors
+          return res.status(403).json({ message: "Invalid Token" });
+        }
+      }
+      req.token = bearerToken;
+      next();
+    });
   } else {
     res.status(403).json({ message: 'No token provided' });
   }
 }
+
+
+app.get("/api/stores", async (_, res) => {
+  try {
+    const stores = await db.store.findMany({
+      include: {
+        users: true
+      }
+    });
+    res.status(200).json(stores);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+})
+
+app.post("/api/stores", verifyToken, async (req, res) => {
+  const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
+  const { user } = decodedToken;
+
+  const existingUser = await db.user.findUnique({ where: { id: user.id } });
+  if (!existingUser) {
+    return res.status(403).json({ message: "You are not authorized to make this request" });
+  }
+
+  if (existingUser.role !== UserRole.ADMIN) {
+    res.status(401).json({ message: "unauthorized!" });
+  }
+
+  const {
+    name,
+    longitude,
+    latitude,
+  } = req.body;
+
+  if (!name) {
+    res.status(400).json({ message: "name is missing" });
+  }
+
+  if (!longitude) {
+    res.status(400).json({ message: "longitude is missing" });
+  }
+
+  if (!latitude) {
+    res.status(400).json({ message: "latitude is missing" });
+  }
+
+  try {
+    const newStore = await db.store.create({
+      data: {
+        name,
+        latitude,
+        longitude
+      }
+    });
+    res.status(201).json(newStore);
+  } catch (error) {
+    console.log("Error in /api/stores POST route: ", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+})
+
+app.patch("/api/stores/:storeId", verifyToken, async (req, res) => {
+  const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
+  const { user } = decodedToken;
+
+  const existingUser = await db.user.findUnique({ where: { id: user.id } });
+  if (!existingUser) {
+    return res.status(403).json({ message: "You are not authorized to make this request" });
+  }
+
+  if (existingUser.role !== UserRole.ADMIN) {
+    res.status(401).json({ message: "unauthorized!" });
+  }
+
+  const storeId = req.params.storeId;
+
+  if (!storeId) {
+    res.status(400).json({ message: "storeId is missing" });
+  }
+
+  const {
+    name,
+    longitude,
+    latitude
+  } = req.body;
+
+  if (!name) {
+    res.status(400).json({ message: "name is missing" });
+  }
+
+  if (!latitude || !longitude) {
+    res.status(400).json({ message: "coordinates are missing" });
+  }
+
+  try {
+    const existingStore = await db.store.findUnique({
+      where: {
+        id: storeId,
+
+      }
+    });
+    if (!existingStore) {
+      res.status(404).json({ message: "store not found" });
+    }
+
+    const store = await db.store.update({
+      where: { id: storeId },
+      data: {
+        name,
+        longitude,
+        latitude
+      },
+    });
+    res.status(200).json(store);
+  } catch (error) {
+    console.log("Error in /api/stores/:storeId PATCH route: ", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+})
+
+app.get("/api/favorite_stores", verifyToken, async (req, res) => {
+  const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
+  const { user } = decodedToken;
+
+
+  const existingUser = await db.user.findUnique({ where: { id: user.id } });
+  if (!existingUser || !user) {
+    return res.status(403).json({ message: "You are not authorized to make this request" });
+  }
+
+
+  try {
+    let favoriteStores;
+
+    if (existingUser.role !== UserRole.ADMIN) {
+      favoriteStores = await db.favoriteStore.findMany({
+        where: {
+          userId: existingUser.id
+        }
+      });
+      return res.status(200).json(favoriteStores);
+    }
+
+    favoriteStores = await db.favoriteStore.findMany();
+    res.status(200).json(favoriteStores);
+  } catch (error) {
+    console.log("Error getting store to favorites: ", error);
+    res.status(500).json(error);
+  }
+
+})
+
+app.post("/api/favorite_stores", verifyToken, async (req, res) => {
+  const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
+  const { user } = decodedToken;
+
+  if (!user) {
+    res.status(401).json({ message: "unauthorized!" });
+  }
+
+  const {
+    userId,
+    storeId
+  } = req.body;
+
+  if (!userId) {
+    res.status(400).json({ message: "userId is missing" });
+  }
+
+  if (!storeId) {
+    res.status(400).json({ message: "storeId is missing" });
+  }
+
+  try {
+
+    // check to see if the user already has this store in their favorite list
+    const existingFavorites = await db.favoriteStore.findFirst({
+      where: {
+        userId,
+        storeId
+      }
+    });
+
+    if (existingFavorites) {
+      return res.status(406).json({ message: "This store is already on your favorites list." });
+    }
+
+    const newFavorite = await db.favoriteStore.create({
+      data: {
+        userId,
+        storeId
+      }
+    });
+    res.status(201).json(newFavorite);
+
+
+  } catch (error) {
+    console.log("Error adding store to favorites: ", error);
+    res.status(500).json(error);
+  }
+
+})
+
+app.delete("/api/favorite_stores/:favoriteStoreId", verifyToken, async (req, res) => {
+  const favoriteStoreId = req.params.favoriteStoreId;
+  const decodedToken = jwt.verify(req.token, process.env.JWT_SECRET);
+  const { user } = decodedToken;
+
+  if (!user) {
+    res.status(401).json({ message: "unauthorized!" });
+  }
+
+  try {
+    const foundFavorite = await db.favoriteStore.delete({ where: { id: favoriteStoreId } });
+
+    if (!foundFavorite) {
+      return res.status(404).json({ message: "Could not find favorite with given id" });
+    }
+    res.status(200).json(foundFavorite);
+  }
+  catch (error) {
+    console.log("Error adding store to favorites: ", error);
+    res.status(500).json(error);
+  }
+
+})
 
 app.get("/", (req, res) => res.send("Express on Vercel"));
 
